@@ -432,3 +432,29 @@ def load_effective_calibration(model_name):
 def apply_calibration(age):
     return CALIBRATION_SCALE * age + CALIBRATION_OFFSET
 
+def decide_access(numeric, total_valid):
+    """Final decision from the filtered sample set.
+
+    Returns (final_median, final_group, allowed, camera_error).
+    """
+    if total_valid >= MIN_VALID_SAMPLES and bool(numeric):
+        final_median = float(np.median(numeric))
+        return (final_median, group_from_median(final_median),
+                final_median >= MIN_AGE_THRESHOLD, None)
+    return (None, None, False,
+            "Not enough good face samples - please center your face and try again")
+
+# Active estimator identity: calibration reference points are recorded per
+# estimator, so switching models automatically invalidates points measured
+# against the old one.
+if genderage_session is not None:
+    PRIMARY_MODEL_NAME = "genderage-onnx"
+elif USE_DNN:
+    PRIMARY_MODEL_NAME = "caffe-dnn"
+elif age_cnn_model is not None:
+    PRIMARY_MODEL_NAME = "cnn-utkface"
+else:
+    PRIMARY_MODEL_NAME = "none"
+
+CALIBRATION_SCALE, CALIBRATION_OFFSET = load_effective_calibration(PRIMARY_MODEL_NAME)
+
