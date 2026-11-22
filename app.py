@@ -764,3 +764,32 @@ def check_verification():
         return jsonify({"verified": True})
     return jsonify({"verified": False})
 
+@app.route('/control')
+def control_panel():
+    """Web app control panel for server management"""
+    return render_template("control_panel.html")
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    """Download endpoint for server launcher files"""
+    allowed_files = {
+        'start_server.bat': 'start_server.bat',
+        'start_server_hidden.bat': 'start_server_hidden.bat',
+        'start_server_portable.bat': 'start_server_portable.bat',
+        'start_server_hidden_portable.bat': 'start_server_hidden_portable.bat',
+        'start_server.sh': 'start_server.sh',
+        'setup_autostart.bat': 'setup_autostart.bat'
+    }
+    
+    if filename in allowed_files:
+        file_path = os.path.join(os.getcwd(), allowed_files[filename])
+        if os.path.isfile(file_path):
+            return send_file(file_path, as_attachment=True, download_name=filename)
+    
+    return jsonify({"error": "File not found"}), 404
+
+if __name__ == "__main__":
+    # Debug mode is opt-in: the Werkzeug debugger exposes an interactive
+    # console to anything that can reach the server (LAN included).
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(debug=debug, use_reloader=False)
