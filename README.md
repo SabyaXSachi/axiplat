@@ -94,3 +94,28 @@ python benchmark_models.py 20
 
 Runs both estimators side by side on your webcam and prints raw outputs — use it to validate a model switch or a new calibration point.
 
+## Real result plots
+
+`python visualize_results.py` plots the **last real verification session** from `session_log.json` (written automatically by the server). Without a session log it falls back to clearly-labeled simulated data.
+
+## Training the CNN (optional)
+
+`train_cnn.py` **refuses to train without a real dataset** — a model trained on fake data would silently corrupt the age fusion. Download the [UTKFace aligned dataset](https://susanqq.github.io/UTKFace/), unzip it into `dataset/`, install TensorFlow, then run `python train_cnn.py`. It reports honest validation MAE and saves `model/cnn_age_model.h5`, which the app then blends in at 40% weight.
+
+## Browser Extension (Optional)
+
+The project includes a Chrome/Edge/Brave browser extension that intercepts **any Instagram page** (posts, reels, profiles — not just the homepage) and redirects to AXIPLAT if the user hasn't been verified.
+
+### Setup Extension
+
+1. Navigate to the `extension` folder
+2. See `extension/README.md` for installation instructions
+3. **Note:** Icon files are optional - the extension works without them
+
+### How It Works
+
+- When a user tries to visit Instagram, the extension checks for a valid verification token
+- If not verified, they're redirected to AXIPLAT (`localhost:5000`)
+- After successful age verification, a token is stored (valid for 24 hours)
+- Instagram access is only allowed with a valid token
+- Tokens are bound to the verification session that produced them — opening `/insta` without completing your own camera check never yields a token
