@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Instagram Redirect</title>
+</head>
+<body style="font-family: Arial; text-align:center; padding-top:40px;">
+
+    <h2>You are eligible!</h2>
+    <p>Redirecting you to Instagram…</p>
+
+    <script>
+        {% if token %}
+        localStorage.setItem('age_gate_token', '{{ token }}');
+        {% endif %}
+
+        function openInstagram() {
+            // native app first
+            window.location.href = "instagram://app";
+            setTimeout(function() {
+                window.location.href = "https://www.instagram.com/";
+            }, 1000);
+        }
+
+        openInstagram();
+    </script>
+
+</body>
+</html>
