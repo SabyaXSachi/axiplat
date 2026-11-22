@@ -1,0 +1,8 @@
+{
+  "points": [
+    {"true": 21.0, "measured": 28.47, "model": "caffe-dnn", "note": "curl probe session 2026-11-22 17:11"},
+    {"true": 21.0, "measured": 31.98, "model": "caffe-dnn", "note": "browser session 2026-11-22 17:15"},
+    {"true": 21.0, "measured": 23.03, "model": "genderage-onnx", "note": "benchmark_models.py mean over 15 frames 2026-11-22"},
+    {"true": 21.0, "measured": 20.65, "model": "genderage-onnx", "note": "raw ga median of 13-sample session 2026-11-22 18:25"}
+  ]
+}
