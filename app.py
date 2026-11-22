@@ -370,3 +370,65 @@ def group_from_median(m):
     idx=int(np.argmin(diffs))
     return AGE_LIST[idx]
 
+# Reference-point calibration helpers -----------------------------------------
+
+def load_calibration_points(model_name):
+    """Load (measured, true) reference points recorded for this estimator."""
+    if not os.path.isfile(CALIBRATION_FILE):
+        return []
+    try:
+        with open(CALIBRATION_FILE, 'r') as f:
+            data = json.load(f)
+        return [
+            (float(p["measured"]), float(p["true"]))
+            for p in data.get("points", [])
+            if p.get("model") == model_name
+        ]
+    except Exception:
+        logger.exception("Could not read %s", CALIBRATION_FILE)
+        return []
+
+def fit_calibration(points):
+    """Fit age' = scale * age + offset from (measured, true) points.
+
+    One point (or no variance) -> offset-only; two distinct points ->
+    least-squares. Scale is clamped to a sane range with a warning.
+    """
+    if not points:
+        return 1.0, 0.0
+    measured = np.asarray([p[0] for p in points], dtype=float)
+    true = np.asarray([p[1] for p in points], dtype=float)
+    if len(points) >= 2 and np.ptp(measured) > 1e-6 and np.ptp(true) > 1e-6:
+        scale, offset = np.polyfit(measured, true, 1)
+    else:
+        # All references share one true age (or one measurement): a slope
+        # fit would be degenerate, so shift-only is the honest fix.
+        scale, offset = 1.0, float(np.mean(true) - np.mean(measured))
+    if not (CALIBRATION_SCALE_MIN <= scale <= CALIBRATION_SCALE_MAX):
+        logger.warning("Fitted calibration scale %.3f outside [%s, %s]; clamping",
+                       scale, CALIBRATION_SCALE_MIN, CALIBRATION_SCALE_MAX)
+        scale = float(np.clip(scale, CALIBRATION_SCALE_MIN, CALIBRATION_SCALE_MAX))
+    return float(scale), float(offset)
+
+def load_effective_calibration(model_name):
+    """Effective (scale, offset): env vars > calibration.json points > identity."""
+    env_scale = os.environ.get("AGE_CALIBRATION_SCALE")
+    env_offset = os.environ.get("AGE_CALIBRATION_OFFSET")
+    if env_scale is not None or env_offset is not None:
+        scale = float(env_scale) if env_scale is not None else 1.0
+        offset = float(env_offset) if env_offset is not None else 0.0
+        logger.info("Calibration from env: scale=%.3f offset=%.2f", scale, offset)
+        return scale, offset
+    points = load_calibration_points(model_name)
+    if points:
+        scale, offset = fit_calibration(points)
+        logger.info("Calibration from %s (%d %s point(s)): scale=%.3f offset=%.2f",
+                    CALIBRATION_FILE, len(points), model_name, scale, offset)
+        return scale, offset
+    logger.info("Calibration: identity (no env override, no %s points for %s)",
+                CALIBRATION_FILE, model_name)
+    return 1.0, 0.0
+
+def apply_calibration(age):
+    return CALIBRATION_SCALE * age + CALIBRATION_OFFSET
+
