@@ -24,3 +24,42 @@ python calibrate.py clear # reset to identity
 
 Points live in `calibration.json` and are tagged with the estimator that produced them — switching models automatically ignores stale points (just re-run `calibrate.py <age>` once). Environment variables `AGE_CALIBRATION_SCALE` / `AGE_CALIBRATION_OFFSET` override the file.
 
+## Local Setup
+
+```bash
+git clone https://github.com/Hari-Narayana-Rath/axiplat.git
+cd axiplat
+```
+
+Create a virtual environment (replace `python` with `python3` if needed):
+
+```bash
+python -m venv venv
+```
+
+Activate it:
+
+```bash
+# Windows PowerShell
+.\venv\Scripts\Activate.ps1
+
+# macOS/Linux
+source venv/bin/activate
+```
+
+Install dependencies (Python 3.12 works; MediaPipe is pinned to a 3.12-compatible build):
+
+```bash
+pip install -r requirements.txt
+```
+
+## Run the App
+
+```bash
+python app.py
+```
+
+or use a launcher: `start_server.bat` (visible), `start_server_hidden.bat` (background), `start_server_portable.bat` (auto-setup), `start_server.sh` (macOS/Linux). The control panel's Download Center links serve these files.
+
+Flask runs on `http://127.0.0.1:5000/`. Open that URL in a browser, allow camera access, and follow the on-screen instructions. Press `Ctrl+C` in the terminal to stop the server. Debug mode is **off by default** (the Werkzeug debugger is a LAN security risk) — opt in with `FLASK_DEBUG=1`.
+
