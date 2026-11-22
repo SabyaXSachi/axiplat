@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AXIPLAT — High Accuracy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: #0b0c10;
+        color: #f4f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+    .wrap {
+        width: 100%;
+        max-width: 720px;
+        padding: 24px;
+        background: #14171f;
+        border-radius: 16px;
+        border: 1px solid #1f2230;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        text-align: center;
+    }
+    h1 {
+        margin: 0 0 8px;
+        font-size: 1.6rem;
+    }
+    p {
+        margin: 0 0 20px;
+        color: #9ea7c6;
+        font-size: 0.95rem;
+    }
+    #video {
+        width: 100%;
+        border-radius: 12px;
+        background: #000;
+        border: 1px solid #1f2230;
+    }
+    .live-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+        font-size: 0.9rem;
+    }
+    .face-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        background: #1f2230;
+        color: #9ea7c6;
+        white-space: nowrap;
+    }
+    .face-chip .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #555c77;
+        flex: none;
+    }
+    .face-chip.on { color: #9fe6b0; }
+    .face-chip.on .dot { background: #37c46b; }
+    .countdown { color: #8ac6f2; white-space: nowrap; }
+    .progress-wrap { margin-top: 12px; text-align: left; }
+    .progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: #9ea7c6;
+        margin-bottom: 6px;
+    }
+    .progress-track {
+        height: 8px;
+        border-radius: 999px;
+        background: #1f2230;
+        overflow: hidden;
+    }
+    .progress-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #2f7bd4, #37c46b);
+        transition: width 0.4s ease;
+    }
+    #info {
+        margin-top: 18px;
+        font-size: 1.2rem;
+        font-weight: 500;
+    }
+    #detail {
+        margin-top: 6px;
+        color: #a8b2d9;
+        min-height: 1.2em;
+        font-size: 0.9rem;
+    }
+    .result-card {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: #1a1e2a;
+        border: 1px solid #262b3d;
+        display: none;
+        text-align: left;
+    }
+    .result-card.show { display: block; }
+    .result-card .row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        padding: 4px 0;
+    }
+    .result-card .row .k { color: #9ea7c6; }
+    .result-card.granted { border-color: #2c5a3c; }
+    .result-card.denied { border-color: #5a2c2c; }
+    .status {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: #1f2230;
+        color: #8ac6f2;
+    }
+    .status.error { color: #ff9f9f; }
+    .status.ok { color: #9fe6b0; }
+</style>
