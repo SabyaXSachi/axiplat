@@ -163,3 +163,39 @@
     </div>
 </div>
 
+<script>
+const info = document.getElementById('info');
+const detail = document.getElementById('detail');
+const pill = document.getElementById('status-pill');
+const faceChip = document.getElementById('face-chip');
+const faceText = document.getElementById('face-text');
+const countdown = document.getElementById('countdown');
+const progressText = document.getElementById('progress-text');
+const progressFill = document.getElementById('progress-fill');
+const resultCard = document.getElementById('result-card');
+
+let polling = true;
+let lastSessionId = null;
+
+function setPill(kind, text) {
+    pill.textContent = text;
+    pill.classList.toggle('error', kind === 'error');
+    pill.classList.toggle('ok', kind === 'ok');
+}
+
+function updateLive(j) {
+    const on = Boolean(j.face_detected);
+    faceChip.classList.toggle('on', on);
+    faceText.textContent = on ? 'Face detected' : 'No face — look at the camera';
+
+    const need = j.samples_needed || 6;
+    const have = j.valid_samples || 0;
+    progressText.textContent = `${Math.min(have, need)} / ${need}`;
+    progressFill.style.width = `${Math.min(have / need, 1) * 100}%`;
+
+    if (j.stream_active && j.elapsed !== null && j.max_seconds) {
+        const left = Math.max(0, Math.ceil(j.max_seconds - j.elapsed));
+        countdown.textContent = `${left}s remaining`;
+    }
+}
+
