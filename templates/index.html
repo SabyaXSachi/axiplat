@@ -199,3 +199,80 @@ function updateLive(j) {
     }
 }
 
+function showResult(j) {    resultCard.classList.add('show');
+    resultCard.classList.add(j.access_allowed ? 'granted' : 'denied');
+    document.getElementById('res-age').textContent =
+        j.final_median_age !== null ? `${j.final_median_age.toFixed(1)} yrs` : 'not determined';
+    document.getElementById('res-group').textContent = j.final_group || '—';
+    document.getElementById('res-threshold').textContent =
+        j.threshold !== undefined ? `${j.threshold} yrs` : '14 yrs';
+    document.getElementById('res-decision').textContent = j.access_allowed ? 'Granted' : 'Denied';
+}
+
+async function pollStatus() {
+    try {
+        const r = await fetch('/status');
+        const j = await r.json();
+        if (j.session_id) lastSessionId = j.session_id;
+
+        if (j.camera_error) {
+            setPill('error', 'Camera Error');
+            info.textContent = 'Camera unavailable';
+            detail.textContent = j.camera_error + '. Please confirm it is plugged in and not used by other apps.';
+            countdown.textContent = '';
+            polling = false;
+            return;
+        }
+
+        updateLive(j);
+
+        if (j.ema && j.ema > 0) {
+            setPill('', 'Detecting');
+            info.textContent = `Live estimate: ${j.ema.toFixed(1)} years`;
+            detail.textContent = 'Hold steady for a few more seconds for a final result.';
+        } else if (j.stream_active) {
+            setPill('', 'Detecting');
+            info.textContent = 'Detecting…';
+            detail.textContent = 'Ensure your whole face is visible, close enough, and facing the camera.';
+        }
+
+        if (!j.stream_active) {
+            countdown.textContent = '';
+            showResult(j);
+            if (j.final_median_age !== null && j.final_group) {
+                const ageText = `${j.final_median_age.toFixed(1)} yrs · ${j.final_group}`;
+                if (j.access_allowed) {
+                    info.textContent = 'Access granted';
+                    detail.textContent = `${ageText}. Redirecting you now…`;
+                    setPill('ok', 'Approved');
+                    const sid = lastSessionId ? `?sid=${encodeURIComponent(lastSessionId)}` : '';
+                    setTimeout(() => window.location.replace(`/insta${sid}`), 600);
+                } else {
+                    info.textContent = 'Access denied';
+                    detail.textContent = `${ageText}. You must be at least ${j.threshold !== undefined ? j.threshold : 14} years old.`;
+                    setPill('error', 'Denied');
+                    setTimeout(() => {
+                        window.location.replace("/passcode");
+                    }, 2000);
+                }
+            } else {
+                info.textContent = 'Could not determine age';
+                detail.textContent = j.camera_error || 'Try adjusting lighting, moving closer, and keeping your face in frame.';
+                setPill('error', 'No Signal');
+                // Allow a fresh attempt instead of stranding the user
+                setTimeout(() => window.location.reload(), 3500);
+            }
+            polling = false;
+            return;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+
+    if (polling) setTimeout(pollStatus, 600);
+}
+
+pollStatus();
+</script>
+</body>
+</html>
