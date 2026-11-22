@@ -482,3 +482,30 @@ def is_token_valid(token):
         return False
     return True
 
+def write_session_log(session_id, records, valid_count, outlier_count,
+                      final_age, final_group, allowed, error):
+    """Persist one verification session so visualize_results.py can plot real data."""
+    try:
+        payload = {
+            "session_id": session_id,
+            "finished_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "max_seconds": MAX_SECONDS,
+            "min_samples": MIN_VALID_SAMPLES,
+            "threshold": MIN_AGE_THRESHOLD,
+            "primary_model": PRIMARY_MODEL_NAME,
+            "dnn_available": USE_DNN,
+            "genderage_available": genderage_session is not None,
+            "cnn_available": age_cnn_model is not None,
+            "valid_count": valid_count,
+            "outlier_filtered_count": outlier_count,
+            "final_median_age": final_age,
+            "final_age_group": final_group,
+            "access_allowed": allowed,
+            "camera_error": error,
+            "samples": records,
+        }
+        with open(SESSION_LOG_FILE, 'w') as f:
+            json.dump(payload, f, indent=2)
+    except Exception:
+        logger.exception("Failed to write session log")
+
