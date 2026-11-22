@@ -224,3 +224,56 @@ def cnn_regression_age(face_img):
         logger.exception("CNN age inference failed")
         return None
 
+# ArcFace 5-point alignment template (insightface norm_crop target)
+ARCFACE_DST = np.float32([
+    [38.2946, 51.6963],
+    [73.5318, 51.5014],
+    [56.0252, 71.7366],
+    [41.5493, 92.3655],
+    [70.7299, 92.2041],
+])
+
+def arcface_align(frame, landmarks):
+    """112x112 similarity-aligned crop for genderage, from MediaPipe landmarks.
+
+    Point order follows ArcFace: left eye, right eye, nose, left mouth,
+    right mouth. Iris centers (refine_landmarks adds 468/473) are preferred.
+    """
+    h, w = frame.shape[:2]
+    lm = landmarks.landmark
+    try:
+        if len(lm) >= 474:
+            src = np.array([[lm[i].x * w, lm[i].y * h] for i in (468, 473, 1, 61, 291)],
+                           dtype=np.float32)
+        else:
+            src = np.array([
+                [(lm[33].x + lm[133].x) / 2 * w, (lm[33].y + lm[133].y) / 2 * h],
+                [(lm[362].x + lm[263].x) / 2 * w, (lm[362].y + lm[263].y) / 2 * h],
+                [lm[1].x * w, lm[1].y * h],
+                [lm[61].x * w, lm[61].y * h],
+                [lm[291].x * w, lm[291].y * h],
+            ], dtype=np.float32)
+        m, _ = cv2.estimateAffinePartial2D(src, ARCFACE_DST)
+        if m is None:
+            return None
+        return cv2.warpAffine(frame, m, (112, 112), borderValue=0.0)
+    except Exception:
+        logger.exception("ArcFace alignment failed")
+        return None
+
+def genderage_age(frame, landmarks):
+    """Raw age from insightface genderage.onnx, or None when unavailable."""
+    if genderage_session is None:
+        return None
+    try:
+        aligned = arcface_align(frame, landmarks)
+        if aligned is None:
+            return None
+        blob = cv2.dnn.blobFromImage(
+            aligned, 1.0, GENDERAGE_INPUT_SIZE, (0.0, 0.0, 0.0), swapRB=True)
+        out = genderage_session.run(None, {"data": blob})[0][0]
+        return float(out[2]) * 100.0
+    except Exception:
+        logger.exception("genderage inference failed")
+        return None
+
