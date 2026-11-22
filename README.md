@@ -63,3 +63,34 @@ or use a launcher: `start_server.bat` (visible), `start_server_hidden.bat` (back
 
 Flask runs on `http://127.0.0.1:5000/`. Open that URL in a browser, allow camera access, and follow the on-screen instructions. Press `Ctrl+C` in the terminal to stop the server. Debug mode is **off by default** (the Werkzeug debugger is a LAN security risk) — opt in with `FLASK_DEBUG=1`.
 
+## Configuration (environment variables)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGE_MIN_THRESHOLD` | `14.0` | Minimum estimated age to grant access |
+| `AGE_MIN_SAMPLES` | `6` | Good samples required before deciding |
+| `AGE_MAX_SECONDS` | `20` | Camera session timeout |
+| `AGE_EMA_ALPHA` | `0.3` | Smoothing factor for the live estimate |
+| `AGE_MIN_FACE_RATIO` | `0.15` | Face width / frame width floor |
+| `AGE_MAX_YAW_RATIO` | `0.25` | Head-turn rejection threshold |
+| `AGE_TOKEN_HOURS` | `24` | Verification token validity |
+| `AGE_CALIBRATION_SCALE` / `AGE_CALIBRATION_OFFSET` | from `calibration.json` | Override the reference-point fit (see calibration section) |
+| `AGE_GATE_PASSCODE` | `admin123` | Parent override passcode — **change this** |
+| `FLASK_DEBUG` | `0` | Enable Flask debug mode |
+
+## Tests
+
+```bash
+python test_pipeline.py
+```
+
+Covers outlier rejection, face-quality gating, EMA behavior, calibration fitting and per-model guards, `/status` fields, and session-bound token issuing.
+
+## Model comparison
+
+```bash
+python benchmark_models.py 20
+```
+
+Runs both estimators side by side on your webcam and prints raw outputs — use it to validate a model switch or a new calibration point.
+
