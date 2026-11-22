@@ -172,3 +172,41 @@ if os.path.isfile(VERIFICATION_TOKEN_FILE):
         logger.exception("Could not read %s; starting with no tokens", VERIFICATION_TOKEN_FILE)
         verification_tokens = {}
 
+# Helper routines
+def adaptive_blob_mean(face_img):
+    """Blend default mean subtraction with current frame stats."""
+    if face_img is None or DYNAMIC_MEAN_BLEND <= 0:
+        return DEFAULT_BLOB_MEAN
+    b_mean, g_mean, r_mean, _ = cv2.mean(face_img)
+    blended = []
+    for default_val, current_val in zip(DEFAULT_BLOB_MEAN, (b_mean, g_mean, r_mean)):
+        blended.append((1.0 - DYNAMIC_MEAN_BLEND) * default_val + DYNAMIC_MEAN_BLEND * current_val)
+    return tuple(blended)
+
+
+def soft_expected_age_from_dnn(face_img):
+    """Raw model output: probability-weighted expected age from the DNN."""
+    if age_net is None:
+        return None
+    try:
+        mean_vals = adaptive_blob_mean(face_img)
+        blob = cv2.dnn.blobFromImage(
+            face_img, 1.0, (227,227),
+            mean_vals,
+            swapRB=False
+        )
+        age_net.setInput(blob)
+        preds = age_net.forward()[0]
+
+        e = np.exp(preds - np.max(preds))
+        probs = e / e.sum()
+
+        # Always use the probability-weighted expected age: snapping to the
+        # top bucket's midpoint made the running estimate jumpy, which
+        # destabilized the EMA and the final decision.
+        expected = float(np.dot(probs, AGE_MIDPOINTS))
+        return expected
+    except Exception:
+        logger.exception("DNN age inference failed")
+        return None
+
