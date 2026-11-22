@@ -210,3 +210,17 @@ def soft_expected_age_from_dnn(face_img):
         logger.exception("DNN age inference failed")
         return None
 
+def cnn_regression_age(face_img):
+    if age_cnn_model is None:
+        return None
+    try:
+        img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (64,64))
+        arr = img.astype("float32")/255.0
+        arr = np.expand_dims(arr, axis=0)
+        pred = age_cnn_model.predict(arr)
+        return float(pred[0][0])
+    except Exception:
+        logger.exception("CNN age inference failed")
+        return None
+
