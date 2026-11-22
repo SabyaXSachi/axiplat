@@ -458,3 +458,27 @@ else:
 
 CALIBRATION_SCALE, CALIBRATION_OFFSET = load_effective_calibration(PRIMARY_MODEL_NAME)
 
+def save_verification_tokens():
+    """Save tokens to file"""
+    try:
+        with open(VERIFICATION_TOKEN_FILE, 'w') as f:
+            json.dump(verification_tokens, f)
+    except Exception:
+        logger.exception("Could not persist verification tokens")
+
+def generate_verification_token():
+    """Generate a unique verification token"""
+    return secrets.token_urlsafe(32)
+
+def is_token_valid(token):
+    """Check if token exists and hasn't expired"""
+    if token not in verification_tokens:
+        return False
+    token_time = verification_tokens[token]
+    age_hours = (time.time() - token_time) / 3600
+    if age_hours > VERIFICATION_EXPIRY_HOURS:
+        del verification_tokens[token]
+        save_verification_tokens()
+        return False
+    return True
+
