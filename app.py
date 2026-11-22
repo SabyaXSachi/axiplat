@@ -124,3 +124,51 @@ if os.path.isfile(GENDERAGE_ONNX):
 else:
     logger.info("No genderage.onnx found; Caffe DNN remains the estimator.")
 
+# Face landmark detector
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(
+    static_image_mode=False,
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+# Shared state between streaming and endpoints
+lock = Lock()
+
+latest_ema_age = None
+sampled_ages = []
+final_median_age = None
+final_age_group = None
+access_allowed = False
+stream_active = False
+camera_error = None
+face_detected_now = False
+stream_started_at = None
+
+# Current verification session: a token is only issued to the browser that
+# actually completed (or is viewing) this camera session, not to anyone
+# who happens to open /insta after somebody else verified.
+current_session = None  # {"id": str, "redeemed": bool}
+SESSION_LOG_FILE = "session_log.json"
+
+# Verification tokens stored in memory (persisted to json between runs)
+verification_tokens = {}  # token -> timestamp
+VERIFICATION_TOKEN_FILE = "verification_tokens.json"
+VERIFICATION_EXPIRY_HOURS = float(os.environ.get("AGE_TOKEN_HOURS", "24"))
+
+# Default fallback passcode (override via env)
+PASSCODE = os.environ.get("AGE_GATE_PASSCODE", "admin123")
+REMOTE_SHUTDOWN_ENABLED = os.environ.get("AXIPLAT_ENABLE_REMOTE_SHUTDOWN", "0").lower() in ("1","true","yes")
+SHUTDOWN_SECRET = os.environ.get("AXIPLAT_SHUTDOWN_SECRET", PASSCODE)
+
+# Load existing tokens
+if os.path.isfile(VERIFICATION_TOKEN_FILE):
+    try:
+        with open(VERIFICATION_TOKEN_FILE, 'r') as f:
+            verification_tokens = json.load(f)
+    except Exception:
+        logger.exception("Could not read %s; starting with no tokens", VERIFICATION_TOKEN_FILE)
+        verification_tokens = {}
+
