@@ -154,3 +154,102 @@ def test_session_bound_token():
     print("PASS session_bound_token")
 
 
+def test_calibration_fit():
+    # Empty -> identity
+    assert axiplat.fit_calibration([]) == (1.0, 0.0)
+    # One point -> offset-only
+    scale, offset = axiplat.fit_calibration([(28.47, 21.0)])
+    assert scale == 1.0 and abs(offset - (21.0 - 28.47)) < 1e-9
+    # Two distinct points -> least squares: (10->20, 30->40) is exact y = x + 10
+    scale, offset = axiplat.fit_calibration([(10.0, 20.0), (30.0, 40.0)])
+    assert abs(scale - 1.0) < 1e-9 and abs(offset - 10.0) < 1e-9
+    # Degenerate: same measured values -> offset-only fallback, no crash
+    scale, offset = axiplat.fit_calibration([(25.0, 20.0), (25.0, 30.0)])
+    assert scale == 1.0 and abs(offset - 0.0) < 1e-9
+    # Degenerate: same true values -> offset-only (slope would collapse to 0)
+    scale, offset = axiplat.fit_calibration([(20.0, 21.0), (30.0, 21.0)])
+    assert scale == 1.0 and abs(offset - (21.0 - 25.0)) < 1e-9
+    print("PASS calibration_fit")
+
+
+def test_calibration_model_guard():
+    # Points must only be used for the estimator they were measured against
+    caffe = axiplat.load_calibration_points("caffe-dnn")
+    ga = axiplat.load_calibration_points("genderage-onnx")
+    none = axiplat.load_calibration_points("does-not-exist")
+    assert len(caffe) == 2, f"expected 2 caffe-dnn points, got {len(caffe)}"
+    assert len(ga) == 2, f"expected 2 genderage-onnx points, got {len(ga)}"
+    assert none == []
+    # Two same-true points -> offset-only fit: 21 - mean(measured)
+    ga_measured = [m for m, _ in ga]
+    expected_offset = 21.0 - (sum(ga_measured) / len(ga_measured))
+    env_backup = {k: os.environ.pop(k, None) for k in
+                  ("AGE_CALIBRATION_SCALE", "AGE_CALIBRATION_OFFSET")}
+    try:
+        scale, offset = axiplat.load_effective_calibration("genderage-onnx")
+        assert scale == 1.0 and abs(offset - expected_offset) < 0.01, (scale, offset)
+    finally:
+        for k, v in env_backup.items():
+            if v is not None:
+                os.environ[k] = v
+    print("PASS calibration_model_guard")
+
+
+def test_active_estimator():
+    # On this machine genderage.onnx is present, so it must be the primary
+    assert axiplat.PRIMARY_MODEL_NAME == "genderage-onnx", axiplat.PRIMARY_MODEL_NAME
+    assert axiplat.genderage_session is not None
+    # And the effective calibration matches the fitted offset
+    ga = axiplat.load_calibration_points("genderage-onnx")
+    expected_offset = 21.0 - (sum(m for m, _ in ga) / len(ga))
+    assert abs(axiplat.CALIBRATION_OFFSET - expected_offset) < 0.01, axiplat.CALIBRATION_OFFSET
+    print("PASS active_estimator")
+
+
+def test_decide_access():
+    # No samples -> sample error message
+    median, group, allowed, err = axiplat.decide_access([], 0)
+    assert median is None and not allowed and "samples" in err
+
+    # Enough samples + median 21 >= 14 -> granted, no error
+    vals = [21.0, 21.1, 20.9, 21.0, 21.2, 21.0]
+    median, group, allowed, err = axiplat.decide_access(vals, 6)
+    assert abs(median - 21.0) < 1e-9 and allowed and err is None and group
+
+    # Child median 10 -> denied cleanly, not an error message
+    vals_child = [10.0, 10.1, 9.9, 10.0, 10.2, 10.0]
+    median, group, allowed, err = axiplat.decide_access(vals_child, 6)
+    assert abs(median - 10.0) < 1e-9 and not allowed and err is None
+    print("PASS decide_access")
+
+
+def main():
+    tests = [
+        test_reject_outliers_iqr,
+        test_assess_face_quality,
+        test_ema_update,
+        test_dnn_soft_estimate,
+        test_calibration_fit,
+        test_calibration_model_guard,
+        test_active_estimator,
+        test_decide_access,
+        test_status_fields,
+        test_session_bound_token,
+    ]
+    failed = 0
+    for t in tests:
+        try:
+            t()
+        except AssertionError as e:
+            failed += 1
+            print(f"FAIL {t.__name__}: {e}")
+        except Exception as e:
+            failed += 1
+            print(f"ERROR {t.__name__}: {type(e).__name__}: {e}")
+    total = len(tests)
+    print(f"\n{total - failed}/{total} tests passed")
+    raise SystemExit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()
