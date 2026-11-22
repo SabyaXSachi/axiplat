@@ -277,3 +277,72 @@ def genderage_age(frame, landmarks):
         logger.exception("genderage inference failed")
         return None
 
+def crop_face_from_landmarks(frame, landmarks):
+    h, w, _ = frame.shape
+    xs = [int(lm.x * w) for lm in landmarks.landmark]
+    ys = [int(lm.y * h) for lm in landmarks.landmark]
+    x_min, x_max = max(0,min(xs)), min(w-1,max(xs))
+    y_min, y_max = max(0,min(ys)), min(h-1,max(ys))
+
+    mw = int((x_max-x_min)*0.2)
+    mh = int((y_max-y_min)*0.2)
+
+    x1=max(0,x_min-mw); y1=max(0,y_min-mh)
+    x2=min(w-1,x_max+mw); y2=min(h-1,y_max+mh)
+
+    if x2-x1<10 or y2-y1<10:
+        return None
+
+    return frame[y1:y2, x1:x2].copy()
+
+def normalize_face(face_img):
+    try:
+        lab=cv2.cvtColor(face_img,cv2.COLOR_BGR2LAB)
+        l,a,b=cv2.split(lab)
+        clahe=cv2.createCLAHE(clipLimit=2.0,tileGridSize=(8,8))
+        l2=clahe.apply(l)
+        lab2=cv2.merge((l2,a,b))
+        return cv2.cvtColor(lab2,cv2.COLOR_LAB2BGR)
+    except Exception:
+        logger.exception("Face normalization failed")
+        return face_img
+
+# MediaPipe FaceMesh landmark indices used by the quality gate
+LM_LEFT_EYE_OUTER = 33
+LM_RIGHT_EYE_OUTER = 263
+LM_NOSE_TIP = 1
+
+def assess_face_quality(frame, landmarks):
+    """Check a detected face is usable for age estimation.
+
+    Returns (face_crop, quality) where quality carries the size/pose checks.
+    A face that is too far away or visibly turned produces unreliable age
+    estimates, so those frames are excluded from sampling.
+    """
+    h, w, _ = frame.shape
+    lm = landmarks.landmark
+    xs = [int(p.x * w) for p in lm]
+    ys = [int(p.y * h) for p in lm]
+    x_min, x_max = max(0, min(xs)), min(w - 1, max(xs))
+    face_w = x_max - x_min
+
+    size_ok = face_w > 0 and (face_w / w) >= MIN_FACE_WIDTH_RATIO
+
+    left_eye_x = float(lm[LM_LEFT_EYE_OUTER].x * w)
+    right_eye_x = float(lm[LM_RIGHT_EYE_OUTER].x * w)
+    nose_x = float(lm[LM_NOSE_TIP].x * w)
+    eye_dist = max(1.0, right_eye_x - left_eye_x)
+    eye_mid_x = (left_eye_x + right_eye_x) / 2.0
+    # Nose offset from the eye midpoint, scaled by eye distance: ~0 head-on,
+    # grows as the head turns. Cheap yaw proxy that needs no solvePnP.
+    yaw_ratio = (nose_x - eye_mid_x) / eye_dist
+    pose_ok = abs(yaw_ratio) <= MAX_YAW_RATIO
+
+    quality = {
+        "size_ok": bool(size_ok),
+        "pose_ok": bool(pose_ok),
+        "yaw_ratio": float(yaw_ratio),
+    }
+    face = crop_face_from_landmarks(frame, landmarks)
+    return face, quality
+
