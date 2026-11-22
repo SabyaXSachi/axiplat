@@ -509,3 +509,163 @@ def write_session_log(session_id, records, valid_count, outlier_count,
     except Exception:
         logger.exception("Failed to write session log")
 
+# Frame generator for the MJPEG stream
+def gen_frames():
+    global latest_ema_age, sampled_ages, final_median_age, final_age_group
+    global access_allowed, stream_active, camera_error, face_detected_now
+    global stream_started_at, current_session
+
+    session_id = secrets.token_urlsafe(16)
+    records = []  # per-sample metadata for session_log.json
+
+    with lock:
+        sampled_ages=[]
+        latest_ema_age=None
+        final_median_age=None
+        final_age_group=None
+        access_allowed=False
+        stream_active=True
+        camera_error=None
+        face_detected_now=False
+        stream_started_at=time.time()
+        current_session={"id": session_id, "redeemed": False}
+
+    cap=cv2.VideoCapture(CAMERA_INDEX)
+    if not cap.isOpened():
+        with lock:
+            camera_error="Unable to access camera index {}".format(CAMERA_INDEX)
+            stream_active=False
+        return
+
+    start=time.time()
+    last_sample=start
+    stable_since=None
+    last_ema=None
+
+    # The decision/cleanup block below the try/except runs on every exit
+    # path — including MJPEG client disconnects: Python raises GeneratorExit
+    # at the yield and that used to skip the decision entirely, leaving
+    # stream_active stuck on True with frozen values.
+    try:
+        while True:
+            now=time.time()
+            if now-start > MAX_SECONDS:
+                break
+
+            success,frame=cap.read()
+            if not success:
+                camera_error="Camera read failure"
+                break
+
+            rgb=cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
+            res=face_mesh.process(rgb)
+
+            frame_display=frame.copy()
+            age=None
+            ga_age=None
+            dnn_age=None
+            cnn_age=None
+            quality=None
+            face_detected_now=bool(res and res.multi_face_landmarks)
+
+            if face_detected_now:
+                lm=res.multi_face_landmarks[0]
+
+                h,w,_=frame.shape
+                for p in lm.landmark:
+                    x=int(p.x*w); y=int(p.y*h)
+                    cv2.circle(frame_display,(x,y),1,(0,255,255),-1)
+
+                face,quality=assess_face_quality(frame,lm)
+                # Only quality-passing faces are estimated and sampled: too-distant
+                # or turned faces previously contributed garbage to the median.
+                if face is not None and quality["size_ok"] and quality["pose_ok"]:
+                    face=normalize_face(face)
+
+                    ga_age=genderage_age(frame,lm) if genderage_session else None
+                    dnn_age=soft_expected_age_from_dnn(face) if USE_DNN else None
+                    cnn_age=cnn_regression_age(face) if age_cnn_model else None
+
+                    vals=[]; wts=[]
+                    if ga_age is not None:
+                        # genderage is the primary estimator: its raw bias is
+                        # ~5x smaller than the Caffe DNN's on a known-age face,
+                        # so blending the old model in would drag the estimate up.
+                        vals.append(ga_age); wts.append(1.0)
+                    else:
+                        if dnn_age is not None:
+                            vals.append(dnn_age); wts.append(DNN_WEIGHT)
+                        if cnn_age is not None:
+                            vals.append(cnn_age); wts.append(CNN_WEIGHT)
+
+                    if vals:
+                        # Calibration is applied here (at fusion), not inside
+                        # the model functions, so session_log keeps RAW model
+                        # outputs and calibration can be refitted without a
+                        # new camera session.
+                        age=apply_calibration(float(np.average(vals,weights=wts)))
+
+            # Sample only real estimates: missing the face for a frame must not
+            # drag either the sample set or the EMA toward 0.
+            if now-last_sample>=SAMPLE_INTERVAL:
+                last_sample=now
+                if age is not None:
+                    sampled_ages.append(age)
+                    latest_ema_age=ema_update(latest_ema_age, age)
+                    records.append({
+                        "t": round(now-start, 2),
+                        "age": round(age, 2),
+                        "ga": None if ga_age is None else round(ga_age, 2),
+                        "dnn": None if dnn_age is None else round(dnn_age, 2),
+                        "cnn": None if cnn_age is None else round(cnn_age, 2),
+                        "yaw": None if quality is None else round(quality["yaw_ratio"], 3),
+                    })
+
+                    # Stability only counts once we have enough evidence.
+                    if last_ema is None:
+                        last_ema=latest_ema_age
+                        stable_since=now
+                    else:
+                        if abs(latest_ema_age-last_ema)<=STABILITY_THRESH:
+                            if now-stable_since>=STABLE_SECONDS and len(sampled_ages)>=MIN_VALID_SAMPLES:
+                                break
+                        else:
+                            stable_since=now
+                            last_ema=latest_ema_age
+
+            display="Detecting..."
+            if latest_ema_age and latest_ema_age>0:
+                display=f"Age (EMA): {latest_ema_age:.1f}"
+            elif face_detected_now and quality is not None and not (quality["size_ok"] and quality["pose_ok"]):
+                display="Move closer / face the camera"
+            cv2.putText(frame_display,display,(10,30),cv2.FONT_HERSHEY_SIMPLEX,0.9,(0,255,255),2)
+
+            ret,buf=cv2.imencode('.jpg',frame_display)
+            if ret:
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'+buf.tobytes()+b'\r\n')
+    except GeneratorExit:
+        # Browser stopped pulling the stream (tab closed, navigated away,
+        # curl probe timed out). Fall through and finalize the session.
+        logger.info("Video feed client disconnected; finalizing session")
+
+    # Decision requires enough quality samples; outliers are dropped before
+    # the median so one bad frame can't move the result. Runs on normal
+    # exit AND client disconnect.
+    numeric=reject_outliers_iqr(sampled_ages)
+    outlier_count=len(sampled_ages)-len(numeric)
+    final_median_age, final_age_group, access_allowed, decision_error = decide_access(
+        numeric, len(sampled_ages))
+    if decision_error and not camera_error:
+        camera_error=decision_error
+
+    write_session_log(session_id, records, len(sampled_ages), outlier_count,
+                      final_median_age, final_age_group, access_allowed, camera_error)
+
+    try:
+        cap.release()
+    except Exception:
+        logger.exception("Camera release failed")
+
+    stream_active=False
+    return
+
