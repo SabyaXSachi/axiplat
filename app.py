@@ -346,3 +346,27 @@ def assess_face_quality(frame, landmarks):
     face = crop_face_from_landmarks(frame, landmarks)
     return face, quality
 
+def reject_outliers_iqr(values):
+    """Drop samples outside [Q1 - 1.5*IQR, Q3 + 1.5*IQR].
+
+    Keeps a single bad frame (sudden misread, partial blur) from dragging
+    the median. Small sets are returned untouched.
+    """
+    if len(values) < 4:
+        return list(values)
+    arr = np.asarray(values, dtype=float)
+    q1, q3 = np.percentile(arr, [25, 75])
+    iqr = q3 - q1
+    lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+    return [v for v in values if lo <= v <= hi]
+
+def ema_update(prev,val,alpha=EMA_ALPHA):
+    if prev is None:
+        return val
+    return prev*(1-alpha)+val*alpha
+
+def group_from_median(m):
+    diffs=[abs(m-mp) for mp in AGE_MIDPOINTS]
+    idx=int(np.argmin(diffs))
+    return AGE_LIST[idx]
+
