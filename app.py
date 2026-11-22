@@ -669,3 +669,98 @@ def gen_frames():
     stream_active=False
     return
 
+# HTTP routes
+@app.route('/')
+def index():
+    return render_template("index.html")
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/status')
+def status():
+    now = time.time()
+    with lock:
+        return jsonify({
+            "stream_active": stream_active,
+            "session_id": None if current_session is None else current_session["id"],
+            "face_detected": face_detected_now,
+            "ema": None if latest_ema_age is None else float(latest_ema_age),
+            "valid_samples": len(sampled_ages),
+            "samples_needed": MIN_VALID_SAMPLES,
+            "elapsed": round(now - stream_started_at, 1) if stream_active else None,
+            "max_seconds": MAX_SECONDS,
+            "threshold": MIN_AGE_THRESHOLD,
+            "calibration": {"scale": CALIBRATION_SCALE, "offset": CALIBRATION_OFFSET,
+                            "model": PRIMARY_MODEL_NAME},
+            "final_median_age": None if final_median_age is None else float(final_median_age),
+            "final_group": final_age_group,
+            "access_allowed": access_allowed,
+            "camera_error": camera_error
+        })
+
+@app.route('/insta')
+def insta():
+    # Issue a token only to the session that actually completed verification.
+    # A stranger opening /insta after someone else's camera check must not
+    # receive a token.
+    sid = request.args.get('sid', '')
+    with lock:
+        can_issue = (
+            access_allowed
+            and current_session is not None
+            and sid == current_session["id"]
+            and not current_session["redeemed"]
+        )
+        if can_issue:
+            current_session["redeemed"] = True
+    if can_issue:
+        token = generate_verification_token()
+        verification_tokens[token] = time.time()
+        save_verification_tokens()
+        return render_template("insta.html", token=token)
+    return render_template("insta.html")
+
+@app.route('/passcode', methods=['GET', 'POST'])
+def passcode():
+    """Passcode entry page for denied access"""
+    if request.method == 'POST':
+        entered = request.form.get('passcode', '')
+        if entered == PASSCODE:
+            # Grant access with passcode
+            token = generate_verification_token()
+            verification_tokens[token] = time.time()
+            save_verification_tokens()
+            return render_template("insta.html", token=token)
+        else:
+            return render_template("passcode.html", error="Incorrect passcode. Please try again.")
+    return render_template("passcode.html")
+
+@app.route('/api/shutdown', methods=['POST'])
+def shutdown_server():
+    """API endpoint to shutdown the server - DISABLED to keep server online"""
+    # Shutdown endpoint is disabled to keep server running even after access is granted
+    # This ensures the server stays online for continuous use
+    return jsonify({
+        "status": "disabled", 
+        "message": "Server shutdown is disabled. Server will remain online for continuous access verification."
+    }), 200
+
+@app.route('/api/verify_token', methods=['POST'])
+def verify_token():
+    """API endpoint for extension to check if token is valid"""
+    data = request.get_json()
+    token = data.get('token', '') if data else ''
+    if token and is_token_valid(token):
+        return jsonify({"valid": True})
+    return jsonify({"valid": False}), 401
+
+@app.route('/api/check_verification', methods=['GET'])
+def check_verification():
+    """API endpoint for extension to check verification status"""
+    token = request.args.get('token', '')
+    if token and is_token_valid(token):
+        return jsonify({"verified": True})
+    return jsonify({"verified": False})
+
