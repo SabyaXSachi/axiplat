@@ -77,3 +77,50 @@ CALIBRATION_SCALE_MAX = 2.0
 # head is turned too far sideways (both reliably distort age estimates).
 MIN_FACE_WIDTH_RATIO = float(os.environ.get("AGE_MIN_FACE_RATIO", "0.15"))
 MAX_YAW_RATIO = float(os.environ.get("AGE_MAX_YAW_RATIO", "0.25"))
+
+# Model loading
+USE_DNN = False
+age_net = None
+if os.path.isfile(AGE_PROTO) and os.path.isfile(AGE_CAFFE):
+    try:
+        age_net = cv2.dnn.readNetFromCaffe(AGE_PROTO, AGE_CAFFE)
+        USE_DNN = True
+        logger.info("Loaded OpenCV DNN age model.")
+    except Exception:
+        logger.exception("Failed to load DNN age model")
+
+age_cnn_model = None
+if TF_AVAILABLE:
+    cnn_path = os.path.join(MODEL_DIR, "cnn_age_model.h5")
+    if os.path.isfile(cnn_path):
+        try:
+            age_cnn_model = load_model(cnn_path)
+            logger.info("Loaded CNN regression model: %s", cnn_path)
+        except Exception:
+            logger.exception("Failed to load CNN")
+    else:
+        logger.info("No CNN model found; continuing without regression CNN.")
+else:
+    logger.info("TensorFlow not available; CNN regression disabled.")
+
+# insightface genderage.onnx (buffalo_l): modern age+gender model, the primary
+# estimator when present. The old Caffe DNN stays as the fallback. Age comes
+# from output element [2] * 100 - verified empirically against a known-age
+# face in benchmark_models.py (input is a 96x96 blob from a 112x112
+# ArcFace-aligned crop, swapRB=True).
+GENDERAGE_ONNX = os.path.join(MODEL_DIR, "genderage.onnx")
+genderage_session = None
+GENDERAGE_INPUT_SIZE = (96, 96)
+if os.path.isfile(GENDERAGE_ONNX):
+    try:
+        import onnxruntime as ort
+        genderage_session = ort.InferenceSession(
+            GENDERAGE_ONNX, providers=["CPUExecutionProvider"])
+        _shape = genderage_session.get_inputs()[0].shape
+        GENDERAGE_INPUT_SIZE = (int(_shape[3]), int(_shape[2]))
+        logger.info("Loaded genderage ONNX age model (input %dx%d).", *GENDERAGE_INPUT_SIZE)
+    except Exception:
+        logger.exception("Failed to load genderage ONNX model (onnxruntime installed?)")
+else:
+    logger.info("No genderage.onnx found; Caffe DNN remains the estimator.")
+
