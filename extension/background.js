@@ -56,3 +56,61 @@ async function checkOnceOnStart() {
 }
 
 checkOnceOnStart();
+
+chrome.webRequest.onBeforeRequest.addListener(
+  async function(details) {
+    const url = new URL(details.url);
+    // Block every Instagram page (post/reel/profile URLs included) — the old
+    // home/accounts/explore-only allowlist let direct deep links straight in.
+    if (INSTAGRAM_DOMAINS.includes(url.hostname)) {
+      const verified = await isVerified();
+
+      if (!verified) {
+        return { redirectUrl: GATE_URL };
+      }
+    }
+  },
+  { urls: ["https://www.instagram.com/*", "https://instagram.com/*"] },
+  ["blocking"]
+);
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'loading' && tab.url) {
+    try {
+      const url = new URL(tab.url);
+
+      if (INSTAGRAM_DOMAINS.includes(url.hostname)) {
+        const verified = await isVerified();
+
+        if (!verified) {
+          chrome.tabs.update(tabId, { url: GATE_URL });
+        }
+      }
+    } catch (e) {
+    }
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'checkVerification') {
+    isVerified().then(verified => {
+      sendResponse({ verified });
+    });
+    return true; // keep channel open for async response
+  }
+  
+  if (request.action === 'checkServer') {
+    isServerRunning().then(running => {
+      sendResponse({ running });
+    });
+    return true;
+  }
+  
+  if (request.action === 'clearToken') {
+    chrome.storage.local.remove('age_gate_token', () => {
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+});
+
