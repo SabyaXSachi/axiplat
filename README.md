@@ -1,6 +1,8 @@
 # AXIPLAT
 
-AXIPLAT is a Flask-based camera age verification stack that fuses OpenCV DNN predictions with an optional TensorFlow CNN regressor, plus a dark UI flow for redirecting to Instagram when access is granted.
+AXIPLAT is a Flask-based camera age-verification stack that combines OpenCV face detection, ONNX age estimation, optional TensorFlow CNN smoothing, and an optional browser extension that gates Instagram access.
+
+The application provides a browser camera workflow, calibrated age estimates, a parent passcode override, session-bound verification tokens, and launch scripts for Windows and macOS/Linux.
 
 ## How verification works
 
@@ -27,7 +29,7 @@ Points live in `calibration.json` and are tagged with the estimator that produce
 ## Local Setup
 
 ```bash
-git clone https://github.com/Hari-Narayana-Rath/axiplat.git
+git clone https://github.com/SabyaXSachi/axiplat.git
 cd axiplat
 ```
 
